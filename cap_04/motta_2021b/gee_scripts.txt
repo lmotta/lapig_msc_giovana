@@ -1,0 +1,6 @@
+Scripts para geração das imagens estáveis (executados em 2021-07-13)
+
+ . antropico_natural.js (executados em 2021-07-01)
+https://code.earthengine.google.com/bf33776ee822758b9a234effbfea1e44
+. agr_for_pas_sav (executados em 2021-07-13)
+https://code.earthengine.google.com/036286a356c19c971387634dcc04a5b8

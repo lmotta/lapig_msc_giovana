@@ -1,0 +1,106 @@
+...) Colocar a descrição:
+for f in $(ls agriculture*_calc.tif);do ./add_band_description.py $f 1 'Stable(1:NO,2:YES)';done
+for f in $(ls forest*_calc.tif);do ./add_band_description.py $f 1 'Stable(1:NO,2:YES)';done
+for f in $(ls pasture*_calc.tif);do ./add_band_description.py $f 1 'Stable(1:NO,2:YES)';done
+for f in $(ls savana*_calc.tif);do ./add_band_description.py $f 1 'Stable(1:NO,2:YES)';done
+
+.) Mosaicar os temas
+..) Resultados: antropico.tif, natural.tif, nao_definido.tif
+gdalwarp TEMA*_calc.tif TEMA.tif
+
+gdalwarp agriculture*_calc.tif agriculture.tif
+gdalwarp forest*_calc.tif forest.tif
+gdalwarp pasture*_calc.tif pasture.tif
+gdalwarp savana*_calc.tif savana.tif
+
+.) Criar imagem: mapbiomas_agr_pas_for_sav.tif
+Utilizar a imagem do "mapbiomas.tif" do processamento anterior
+/home/lmotta/data/Giovana_copia_hd/mapbiomas/2021-07-01/antropico_natural/process/mosaic/mapbiomas.tif
+e as imagens agriculture.tif, forest.tif, pasture.tif e savana.tif
+
+..) mapbiomas.tif, classes:
+1 Não Estável
+2 Não definido
+3 Antrópico
+4 Natural
+
+..) agriculture.tif, forest.tif, pasture.tif e savana.tif, classes
+1 Não estável
+2 Estável
+
+...) Remover o NODATA
+for f in agriculture.tif forest.tif pasture.tif savana.tif;do gdal_edit.py -unsetnodata $f;done
+
+..) mapbiomas_agr_pas_for_sav.tif, classes
+1 Não Estável
+2 Não definido
+3 Antrópico
+4 Natural
+5 agriculture
+6 pasture
+7 forest
+8 savana
+
+..) Etapas
+Adicionar apenas os pixeis estáveis de cada imagem 
+agriculture.tif -> 5
+pasture.tif     -> 6
+forest.tif,     -> 7
+savana.tif      -> 8
+
+...) Adicionar agriculture
+* Inicia a imagem mapbiomas_agr_pas_for_sav.tif
+
+calc="numpy.where(C==2,5,M)"
+gdal_calc.py --quiet --overwrite --type=Byte \
+–NoDataValue=none \
+-C agriculture.tif \
+-M mapbiomas.tif \
+--calc=$calc --outfile mapbiomas_agr_pas_for_sav.tif
+
+...) Adicionar pasture
+* Atualiza a imagem mapbiomas_agr_pas_for_sav.tif
+
+calc="numpy.where(C==2,6,M)"
+gdal_calc.py --quiet --overwrite --type=Byte \
+–NoDataValue=none \
+-C pasture.tif \
+-M mapbiomas_agr_pas_for_sav.tif \
+--calc=$calc --outfile mapbiomas_agr_pas_for_sav.tif
+
+...) Adicionar forest
+* Atualiza a imagem mapbiomas_agr_pas_for_sav.tif
+
+calc="numpy.where(C==2,7,M)"
+gdal_calc.py --quiet --overwrite --type=Byte \
+–NoDataValue=none \
+-C forest.tif \
+-M mapbiomas_agr_pas_for_sav.tif \
+--calc=$calc --outfile mapbiomas_agr_pas_for_sav.tif
+
+...) Adicionar savana
+* Atualiza a imagem mapbiomas_agr_pas_for_sav.tif
+
+calc="numpy.where(C==2,8,M)"
+gdal_calc.py --quiet --overwrite --type=Byte \
+–NoDataValue=none \
+-C savana.tif \
+-M mapbiomas_agr_pas_for_sav.tif \
+--calc=$calc --outfile mapbiomas_agr_pas_for_sav.tif
+
+..) Alterar valor de NODATA: 255 -> 0
+...) Remover NODATA
+gdal_edit.py -a_nodata 0 mapbiomas_agr_pas_for_sav.tif
+...) Alterar 255 -> 0
+calc="numpy.where(M==255,0,M)"
+gdal_calc.py --quiet --overwrite --type=Byte \
+–NoDataValue=none \
+-M mapbiomas_agr_pas_for_sav.tif \
+--calc=$calc --outfile mapbiomas_agr_pas_for_sav.tif
+...) Definir NODATA p/ ZERO
+gdal_edit.py -unsetnodata mapbiomas_agr_pas_for_sav.tif
+
+..) Colocar a descrição na banda do "mapbiomas_agr_pas_for_sav.tif"
+f="mapbiomas_agr_pas_for_sav.tif"
+desc="1:no_stable,2:nao_definido,3:antropico,4:natural,5:agriculture,6:pasture,7:forest,8:savana"
+./add_band_description.py $f 1 $desc

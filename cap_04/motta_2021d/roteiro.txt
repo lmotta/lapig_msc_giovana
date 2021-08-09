@@ -1,0 +1,104 @@
+.) Imagens do Mapbiomas(obtidas em Julho de 2021)
+..) Imagem do Mapbiomas para as classes do 1o nível - mapbiomas.tif
+1 Não Estável
+2 Não definido
+3 Antrópico
+4 Natural
+...) Definição das classes
+As classes foram calculadas a partir das classes utilizadas pelo Mapbiomas.
+A seguir a relação das classes da imagem 'mapbiomas.tif' com as classes do Mapbiomas:
+- Não definido: 25 e 27.
+- Antrópico: 9, 15, 20, 21, 24, 30, 31, 36, 39 e 41.
+- Natural: 3, 4, 5, 11, 12, 13, 23, 29, 32 e 33.
+
+Para os locais da imagem 'mapbiomas.tif' terem as classes acima é necessário
+a ocorrência da mesma classe em pelo menos 20 anos da série do Mapbiomas, caso contrário, atribui a classe 'Não Estável'.
+
+..) Imagem do Mapbiomas para as classes do 2o nível - mapbiomas_agr_pas_for_sav.tif
+1 Não Estável
+2 Não definido
+3 Antrópico
+4 Natural
+5 Agricultura
+6 Pasto
+7 Floresta
+8 Savana
+...) Definição das classes
+As classes Agricultura, Pasto, Floresta e Savana, foram calculadas a partir das classes utilizadas pelo Mapbiomas:
+- Agricultura: 20, 36, 39 e 41
+- Pasto: 15
+- Floresta: 3
+- Savana: 4
+As demais classes foram obtidas a partir da imagem do 1o nível(mapbiomas.tif)
+
+.) Imagem de tendência reduzida - cerrado_total.accum_mk_reduce.tif
+
+..) Obtida pelas imagens de tendências mensais na área do cerrado:
+cerrado_01_total.accum_mk.tif .. cerrado_12_total.accum_mk.tif
+...) Cada imagem de tendência mensal possui as seguintes bandas
+Banda 1 (s_mk): Valor de Mann-Kendal
+Banda 2 (p_0.05): Valor do teste estatístico ao nivel de significância de 0.05.
+Banda 3 (slope): Valor do estimador de Theil-Sen(slope)
+..) A Imagem de tendência reduzida possui apenas UMA banda com valores categorizados.
+...) A categorização é calculada com base nos valores de 'p_0.05' e 'slope' dos 
+12 meses(imagens das tendências mensais), sendo as classes:
+1 CER
+2 NEG
+3 NONE
+4 POS
+5 ALT
+....) Definição das classes segundo os valores mensais de 'p_0.005' e 'slope'
+A classe CER são os locais do Cerrado que não tiveram valores significativos(p_0.05 > 0.05) em todos os meses.
+A classes NEG, NONE ou POS, são os locais onde tiveram pelo menos UMA ocorrência de valores 
+significativos(p_0.05 <= 0.05) com os respectivos valores de slope, menores que 0 (NEGATIVOS), iguais a
+0 (NONE) ou maiores que 0 (POSITIVO).
+A classe ALT são os locais que apareceram mais de um tipo de valores significativos para o slope, ocorrendo 
+alternância de slopes com valores menores que 0, iquais a 0 ou maiores que 0.
+
+.) Cruzamento entre o Mapbiomas e a tendência(cerrado_total.accum_mk_reduce.tif)
+..) Para a geração das imagens dos cruzamentos utilizou-se o script:
+mapbioma_tendences_mk_reduce.py
+..) 1o Nível:
+É o cruzamento entre as imagens do Mapbiomas(1o nivel) x tendência(cerrado_total.accum_mk_reduce.tif).
+Os valores digitais das classes foram definidas utilizando 2 digitos, sendo o 1o digito vindo das classes da 
+imagem do mapbiomas e o 2o digito da imagem de tendência.
+A seguir uma amostra dos possíveis valores:
+
+DD(map_x_tendence)
+11 Não Estável x CER
+12 Não Estável x NEG
+13 Não Estável x NONE
+14 Não Estável x POS
+15 Não Estável x ALT
+..
+41 Natural x CER
+42 Natural x NEG
+43 Natural x NONE
+44 Natural x POS
+45 Natural x ALT
+
+...) Uso do script:
+mapbioma_tendences_mk_reduce.py mapbiomas.tif cerrado_total.accum_mk_reduce.tif cerrado_mapbioma_tendence.tif
+...) Imagem de resultado:
+cerrado_mapbioma_tendence.tif
+
+..) 2o Nível:
+Para o mapbiomas utilizou-se a imagem do 2o nível (mapbiomas_agr_pas_for_sav.tif) e utilizou-se a mesma metodologia para o 1o nível.
+A seguir uma amostra dos possíveis valores:
+DD(map_x_tendence)
+11 Não Estável x CER
+12 Não Estável x NEG
+13 Não Estável x NONE
+14 Não Estável x POS
+15 Não Estável x ALT
+..
+81 savana x CER
+82 savana x NEG
+83 savana x NONE
+84 savana x POS
+85 savana x ALT
+
+...) Uso do script:
+mapbioma_tendences_mk_reduce.py mapbiomas_agr_pas_for_sav.tif cerrado_total.accum_mk_reduce.tif cerrado_mapbioma_agr-pas-for-sav_tendence.tif
+...) Imagem de resultado:
+cerrado_mapbioma_agr-pas-for-sav_tendence.tif
