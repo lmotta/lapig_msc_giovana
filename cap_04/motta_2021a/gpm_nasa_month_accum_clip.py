@@ -21,7 +21,6 @@ __copyright__ = '(C) 2021, Luiz Motta'
 __revision__ = '$Format:%H$'
 
 import sys, os, argparse
-import numpy as np
 
 from osgeo import gdal, ogr, gdal_array
 from gdalconst import GA_ReadOnly, GA_Update
