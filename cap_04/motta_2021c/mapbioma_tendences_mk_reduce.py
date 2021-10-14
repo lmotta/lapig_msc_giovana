@@ -24,7 +24,7 @@ __revision__ = '$Format:%H$'
 import sys, os, glob, struct, argparse
 import numpy as np
 
-from osgeo import gdal
+from osgeo import gdal, gdal_array
 from gdalconst import GA_ReadOnly
 
 gdal.UseExceptions()
@@ -42,40 +42,35 @@ class ValueBand():
         gdal.GDT_Float32: 'f',
         gdal.GDT_Float64: 'd'
     }
-    def __init__(self, ds):
-        self.ds = ds
-        band = ds.GetRasterBand(1)
-        self.nodata = band.GetNoDataValue()
-        typeBand = band.DataType
-        self.data = { 'xsize': 1, 'ysize': 1, 'buf_type': typeBand }
-
+    def __init__(self, ds, n_band):
         transf = ds.GetGeoTransform()
         self.x_min, self.y_max = transf[0], transf[3]
         self.x_max, self.y_min = self.x_min + ds.RasterXSize * transf[1], self.y_max + ds.RasterYSize * transf[-1]
         self.transfInv = gdal.InvGeoTransform( transf )
-        self.offsetData = None
+        self.band = ds.GetRasterBand( n_band )
+        self.nodata = self.band.GetNoDataValue()
+        self.struct_format = self.struct_types[ self.band.DataType ]
+        if self.band.DataType in ( gdal.GDT_Float32, gdal.GDT_Float64 ):
+            self.value = lambda unpack_value: unpack_value[0]
+        else:
+            self.value = lambda unpack_value: int( unpack_value[0] )
+        self.data = { 'xsize': 1, 'ysize': 1, 'buf_type': self.band.DataType }
         
-        self.struct_format = self.struct_types[ typeBand ]
-        self.value = lambda unpack_value: unpack_value[0] \
-            if typeBand in ( gdal.GDT_Float32, gdal.GDT_Float64 ) \
-            else     lambda unpack_value: int( unpack_value[0] )
-
     def isValid(self, x, y):
         return self.x_min < x < self.x_max and self.y_min < y < self.y_max
         
-    def setOffset(self, x, y):
+    def get(self, x, y):
         px, py = gdal.ApplyGeoTransform( self.transfInv, x, y )
-        self.offsetData  = dict( { 'xoff': int( px ), 'yoff': int( py ) }, **self.data )
-
-    def getValue(self, n_band):
-        struct_value = self.ds.GetRasterBand( n_band ).ReadRaster( **self.offsetData )
+        d = dict( { 'xoff': int( px ), 'yoff': int( py ) }, **self.data )
+        struct_value = self.band.ReadRaster( **d )
         unpack_value = struct.unpack( self.struct_format, struct_value )
-        return self.value( unpack_value )
+        value = self.value( unpack_value )
+        return None if value == self.nodata else value
 
 
 class XYCenter():
     def __init__(self, ds):
-        ( self.x0, self.s_x, r_x_, self.y0, r_y_, self.s_y) = ds.GetGeoTransform()
+        ( self.x0, self.s_x, r_x, self.y0, r_y, self.s_y) = ds.GetGeoTransform()
     def get(self, col, row):
         return self.x0 + ( col + 0.5) * self.s_x, self.y0 + ( row + 0.5) * self.s_y
 
@@ -102,70 +97,43 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def createResultDS(ds_map, ds_reduce, filename ):
+def createResultDS(ds_origin, filename, description):
     drv = gdal.GetDriverByName('GTiff')
-    ds = drv.Create(filename, ds_map.RasterXSize, ds_map.RasterYSize, ds_reduce.RasterCount + 1, gdal.GDT_Float32 )
-    ds.SetGeoTransform( ds_map.GetGeoTransform() )
-    ds.SetSpatialRef( ds_map.GetSpatialRef() )
-    nodata =  ds_reduce.GetRasterBand(1).GetNoDataValue()
-    # Map -> Band 1
+    ds = drv.Create(filename, ds_origin.RasterXSize, ds_origin.RasterYSize, 1, gdal.GDT_Byte )
+    ds.SetGeoTransform( ds_origin.GetGeoTransform() )
+    ds.SetSpatialRef( ds_origin.GetSpatialRef() )
     band = ds.GetRasterBand(1)
-    band.SetNoDataValue( nodata )
-    desc = ds_map.GetRasterBand(1).GetDescription()
-    if desc == '':
-        desc = 'Map'
-    band.SetDescription( desc )
-    # Reduce -> Band 2..N
-    for idx in range( ds_reduce.RasterCount ):
-        band = ds.GetRasterBand( idx+2 )
-        band.SetNoDataValue( nodata )
-        desc = ds_reduce.GetRasterBand( idx+1 ).GetDescription()
-        if desc == '':
-            desc = 'Tendence'
-        band.SetDescription( desc )
+    band.SetDescription( description )
+    band.SetNoDataValue(0)
     return ds
 
 def populateResult(ds_map, ds_reduce, ds_result):
     def process(xoff, yoff, cols, rows):
-        arr = band_map.ReadAsArray( xoff, yoff, cols, rows ).astype( np.float32 )
-        arr[ arr == nodata_map ] = valueBand.nodata
-        isnodata = ( arr == valueBand.nodata )
-        if ( isnodata == True ).sum() == ( cols * rows ):
-            for b in bands_result:
-                b.WriteArray( arr, xoff, yoff ) # NoData
+        def getValue(x, y, pixelMap):
+            coords = xy_map.get( x, y)
+            if not valueBand.isValid( *coords ):
+                return 0 # Out of image # Nodata
+            pixelTendence = valueBand.get( *coords )
+            if pixelTendence is None:
+                return 0 # Nodata
+            return 10 * pixelMap + pixelTendence
+
+        arr = band_map.ReadAsArray( xoff, yoff, cols, rows )
+        iszero = ( arr == 0 )
+        if ( iszero == True ).sum() == ( cols * rows ):
+            band_result.WriteArray( arr, xoff, yoff ) # NoData
             del arr
             return
-        
-        # Band 1 = Map Band 
-        bands_result[0].WriteArray( arr, xoff, yoff )
-        # Band 2 .. N = Reduce Bands
-
-        #arrs = [ arr.copy() ] * valueBand.ds.RasterCount
-        shape = tuple( [ valueBand.ds.RasterCount ] + list( arr.shape ) )
-        arrs = np.zeros( shape ).astype( np.float32 )
-        for idx in range( valueBand.ds.RasterCount):
-            arrs[ idx ] = arr.copy()
-
-        y, x = np.where(isnodata == False)
+        y, x = np.where(iszero == False)
         idxs = list( zip( y, x) )
         for idx in idxs:
-            coords = xy_map.get( xoff + idx[1], yoff + idx[0] )
-            if not valueBand.isValid( *coords ):
-                for idBand in range( valueBand.ds.RasterCount ):
-                    arrs[ idBand, idx[0], idx[1] ] = valueBand.nodata
-                continue
-            valueBand.setOffset( *coords )
-            for idBand in range( valueBand.ds.RasterCount ):
-                arrs[ idBand, idx[0], idx[1] ] = valueBand.getValue( idBand+1 )
-        
-        for idBand in range( valueBand.ds.RasterCount ):
-            bands_result[ idBand+1 ].WriteArray( arrs[ idBand ], xoff, yoff )
-        del arrs
+            arr[ idx[0], idx[1] ] = getValue( xoff + idx[1], yoff + idx[0], arr[ idx[0], idx[1] ].item() )
+        band_result.WriteArray( arr, xoff, yoff )
+        del arr
     
-    bands_result = [ ds_result.GetRasterBand( idx+1 ) for idx in range( ds_result.RasterCount ) ]
+    band_result = ds_result.GetRasterBand(1)
     band_map = ds_map.GetRasterBand(1)
-    nodata_map =  band_map.GetNoDataValue()
-    valueBand = ValueBand( ds_reduce )
+    valueBand = ValueBand( ds_reduce, 1 )
     xy_map = XYCenter( ds_map )
     xsize, ysize = band_map.XSize, band_map.YSize
     block_xsize, block_ysize = band_map.GetBlockSize()
@@ -182,22 +150,21 @@ def populateResult(ds_map, ds_reduce, ds_result):
             else:
                 cols = xsize - x
             process( x, y, cols, rows )
-            for band in bands_result:
-                band.FlushCache()
+            band_result.FlushCache()
 
 def run(filename_map, filename_reduce, filename_result):
     ds_map = gdal.Open( filename_map, GA_ReadOnly )
     ds = gdal.Open( filename_reduce, GA_ReadOnly )
     ds_reduce = gdal.GetDriverByName('MEM').CreateCopy('', ds )
     ds = None
-    ds_result = createResultDS( ds_map, ds_reduce, filename_result )
+    ds_result = createResultDS( ds_map, filename_result, 'DD(map_x_tendence)' )
     populateResult( ds_map, ds_reduce, ds_result )
     ds_map, ds_reduce, ds_result = None, None, None
     
 def main():
     parser = argparse.ArgumentParser(description=f"Create MapBiomas x Tendences." )
-    parser.add_argument( 'filename_map', action='store', help='Image of Mapbiomas(1 band)', type=str)
-    parser.add_argument( 'filename_reduce', action='store', help='Image tendences reduce min mean max..(5 bands)', type=str)
+    parser.add_argument( 'filename_map', action='store', help='Image of Mapbiomas', type=str)
+    parser.add_argument( 'filename_reduce', action='store', help='Image tendences reduce', type=str)
     parser.add_argument( 'filename_result', action='store', help='Output image MapBiomas x Tendences', type=str)
     args = parser.parse_args()
     return run( args.filename_map, args.filename_reduce, args.filename_result)
